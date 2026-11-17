@@ -626,12 +626,20 @@ export function parseSnapshot(text: string): Snapshot {
   if (typeof o.floor_usd !== 'number' || !Number.isSafeInteger(o.floor_usd) || o.floor_usd <= 0) throw new SnapshotError('snapshot.json has no floor_usd');
   if (!Array.isArray(o.protocols)) throw new SnapshotError('snapshot.json has no protocols array');
   if (!Array.isArray(o.watchlist) || o.watchlist.some((s) => typeof s !== 'string')) throw new SnapshotError('snapshot.json has no watchlist of slugs');
+  const seenSlugs = new Set<string>();
   const protocols = o.protocols.map((v, i) => {
     if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new SnapshotError(`snapshot.json's protocol ${i} is not an object`);
     const p = v as Record<string, unknown>;
     if (typeof p.slug !== 'string' || typeof p.name !== 'string' || typeof p.tvl_usd !== 'number' || !Number.isFinite(p.tvl_usd)) {
       throw new SnapshotError(`snapshot.json's protocol ${i} lacks a slug, a name or a TVL`);
     }
+    if (p.tvl_usd <= 0) {
+      throw new SnapshotError(`snapshot.json's protocol ${i} (${p.slug}) has a TVL of ${p.tvl_usd}: TVL must be positive`);
+    }
+    if (seenSlugs.has(p.slug)) {
+      throw new SnapshotError(`snapshot.json has a duplicate slug: ${p.slug} (protocol ${i})`);
+    }
+    seenSlugs.add(p.slug);
     return {
       slug: p.slug,
       name: p.name,
@@ -674,7 +682,7 @@ export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null
   return null;
 }
 
-/** A compact data.js: the dashboard's whole dataset as one script, no fetch and no network. */
+/** A compact data.js: the dashboard's whole dataset as one script, no fetch and no network. `<` is escaped to `\u003c` so the byte sequence `</script>` can never appear in the file, even if a protocol name carries it — safe even if the file is ever inlined into HTML. */
 export function dataScript(radar: RadarData): string {
-  return `window.RADAR=${JSON.stringify(radar)};\n`;
+  return `window.RADAR=${JSON.stringify(radar).replaceAll('<', '\\u003c')};\n`;
 }
