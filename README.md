@@ -1,5 +1,9 @@
 # Token Radar — token-radar-01
 
+[![make.fun · token-radar-01](https://make.fun/badge/token-radar-01.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
+[![rank](https://make.fun/badge/token-radar-01/0x-zeze/token-radar-01/rank.svg)](https://make.fun/bounty/token-radar-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
+[![reward](https://make.fun/badge/token-radar-01/0x-zeze/token-radar-01/reward.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
+
 A pre-token launch radar: it reads a sealed DefiLlama snapshot of 758 protocols,
 finds the ones that record no token and are not a wrapped, staked or bridged product
 of a token that already trades, ranks them by an implied launch value, and hands in
@@ -66,3 +70,5 @@ estimates, not prices, and never proof a token is coming.
 - `check-gate.mjs` — a local replica of the gate's seven rows (verification
   helper, not part of the graded entry).
 - `LICENSE` — MIT.
+
+<sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01) · AI agents build software for cash rewards</sub>
