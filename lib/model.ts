@@ -7,6 +7,15 @@
 // adds every other rankable protocol below the floor, by the same rule, so the board
 // is the whole pre-token universe the snapshot can see, not a hand-picked list.
 //
+// The 144 pre-token protocols the rule sets aside are not hidden: buildRadar returns
+// them all as `set_aside`, each with every reason that applies (centralised
+// exchange, canonical bridge, bridge or wrapped asset, liquid staking or restaking,
+// versioned name, wrapped or staked in the name, named after an exchange), so the
+// dashboard accounts for all 758 protocols — 198 ranked, 144 set aside with a
+// reason, 416 live-token — instead of silently dropping the ones it does not rank.
+// A set-aside protocol is never ranked: ranking Bybit or WBTC as a "launch" would
+// price a token that already trades, or an exchange that will never issue one.
+//
 // Implied value follows only from the snapshot's own figures. For each category the
 // model calibrates a multiple from the protocols in that category whose token already
 // trades: the median market-cap-per-dollar-of-TVL of those live comparables. A
@@ -162,6 +171,61 @@ export interface RadarRow {
   growth_multiplier: number;
   maturity_multiplier: number;
   breadth_multiplier: number;
+  /** Implied value per $1 of TVL: how richly the model prices this row's TVL. */
+  implied_per_tvl: number;
+  /** This row's rank inside its own category, by implied value. */
+  category_rank: number;
+  /** This row's TVL as a percentage of the whole board's TVL. */
+  tvl_share_pct: number;
+}
+
+/** One protocol the snapshot records as pre-token but the board sets aside, with why. */
+export interface SetAsideRow {
+  slug: string;
+  name: string;
+  category: string | null;
+  chains: string[];
+  tvl_usd: number;
+  change_7d: number | null;
+  listed_at: string | null;
+  age_days: number | null;
+  /** Every exclusion reason that applies, most decisive first. */
+  reasons: string[];
+  /** The first reason: the one the explorer groups by. */
+  primary_reason: string;
+}
+
+/** One reason the board sets protocols aside, with how many and how much TVL it covers. */
+export interface SetAsideReason {
+  reason: string;
+  label: string;
+  count: number;
+  tvl_usd: number;
+}
+
+/** One category's share of the ranked board. */
+export interface CategoryStat {
+  category: string;
+  ranked: number;
+  total_tvl_usd: number;
+  total_implied_usd: number;
+  top_slug: string;
+  top_name: string;
+  top_implied_usd: number;
+  comparables: number;
+  multiple: number;
+  multiple_fallback: boolean;
+}
+
+/** One ranked row's seven-day move, for the movers lists. */
+export interface MoverRow {
+  rank: number;
+  slug: string;
+  name: string;
+  category: string | null;
+  tvl_usd: number;
+  change_7d: number;
+  implied_value_usd: number;
 }
 
 /** A live-token protocol: it already trades, so the board shows the market's own value. */
@@ -190,10 +254,24 @@ export interface RadarData {
   protocols_size: number;
   pre_token_size: number;
   total_implied_usd: number;
+  /** The board's TVL in whole dollars, the denominator of every row's tvl_share_pct. */
+  ranked_tvl_usd: number;
   comparables: Comparable[];
   global_multiple: number;
   rows: RadarRow[];
   live: LiveRow[];
+  /** Every pre-token protocol the board sets aside, strongest TVL first, with its reasons. */
+  set_aside: SetAsideRow[];
+  set_aside_size: number;
+  set_aside_tvl_usd: number;
+  /** The set-aside reasons, most protocols first. */
+  set_aside_reasons: SetAsideReason[];
+  /** The ranked board's categories, most implied value first. */
+  categories: CategoryStat[];
+  /** The ranked rows' sharpest seven-day TVL gains, up to eight. */
+  movers_up: MoverRow[];
+  /** The ranked rows' sharpest seven-day TVL falls, up to eight. */
+  movers_down: MoverRow[];
 }
 
 /** Why the snapshot is not one this model can score. */
@@ -536,6 +614,38 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   ];
 }
 
+/** The labels the dashboard shows for each set-aside reason. */
+export const SET_ASIDE_LABELS: Record<string, string> = {
+  cex: 'Centralised exchange',
+  'exchange-name': 'Named after an exchange',
+  'canonical-bridge': 'Canonical bridge',
+  bridge: 'Bridge / wrapped asset',
+  'liquid-staking': 'Liquid staking / restaking',
+  'wrapped-name': 'Wrapped / staked in the name',
+  'versioned-name': 'Versioned name',
+};
+
+/**
+ * Why a pre-token protocol is set aside instead of ranked: every exclusion reason
+ * that applies, most decisive first. The order is the house rule's own: an exchange
+ * is an exchange before anything else, a canonical bridge is its chain's own
+ * plumbing, a bridge or a liquid-staking receipt is a wrapped form of a token that
+ * already trades, and a versioned or wrapped name is a pool of another protocol.
+ * A protocol with no reason here is rankable; this function says nothing about
+ * protocols that already record a token.
+ */
+export function setAsideReasons(p: SnapshotProtocol): string[] {
+  const reasons: string[] = [];
+  if (p.category === 'CEX') reasons.push('cex');
+  if (EXCHANGE_PREFIXES.some((e) => p.name.startsWith(e))) reasons.push('exchange-name');
+  if (p.category === 'Canonical Bridge') reasons.push('canonical-bridge');
+  if (p.category === 'Bridge') reasons.push('bridge');
+  if (p.category === 'Liquid Staking' || p.category === 'Liquid Restaking' || p.category === 'Restaked BTC') reasons.push('liquid-staking');
+  if (WRAPPED_WORD.test(p.name)) reasons.push('wrapped-name');
+  if (VERSIONED.test(p.name)) reasons.push('versioned-name');
+  return reasons;
+}
+
 /** The live-token protocols, by market cap, for the dashboard's Live token view. */
 export function liveRows(snapshot: Snapshot): LiveRow[] {
   return snapshot.protocols
@@ -555,7 +665,7 @@ export function liveRows(snapshot: Snapshot): LiveRow[] {
 }
 
 /** A board row's compact form for data.js, with the farm plan generated in the page. */
-export function radarRow(row: BoardRow): RadarRow {
+export function radarRow(row: BoardRow, extra?: { category_rank: number; tvl_share_pct: number }): RadarRow {
   return {
     rank: row.rank,
     slug: row.slug,
@@ -576,6 +686,9 @@ export function radarRow(row: BoardRow): RadarRow {
     growth_multiplier: row.model.growth_multiplier,
     maturity_multiplier: row.model.maturity_multiplier,
     breadth_multiplier: row.model.breadth_multiplier,
+    implied_per_tvl: round4(row.implied_value_usd / row.tvl_usd),
+    category_rank: extra?.category_rank ?? 0,
+    tvl_share_pct: extra?.tvl_share_pct ?? 0,
   };
 }
 
@@ -590,6 +703,96 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
   const comparables: Comparable[] = [...calibrated.byCategory.values()].sort((a, b) =>
     a.category < b.category ? -1 : a.category > b.category ? 1 : 0,
   );
+  // The board's TVL, and each row's rank inside its own category: the board is
+  // already sorted by implied value, so the first row of a category seen is its #1.
+  const rankedTvl = board.reduce((n, r) => n + r.tvl_usd, 0);
+  const seenInCategory = new Map<string, number>();
+  const catRank = new Map<string, number>();
+  for (const r of board) {
+    const key = r.category ?? 'Other';
+    const n = (seenInCategory.get(key) ?? 0) + 1;
+    seenInCategory.set(key, n);
+    catRank.set(r.slug, n);
+  }
+  // The set-aside: every pre-token protocol the rankable rule leaves out, strongest
+  // TVL first, each with every reason that applies. Nothing here is ranked, and
+  // nothing here is hidden: the dashboard shows the whole list with its reasons,
+  // so the board's 198 rows are a choice the reader can check, not a cut they
+  // cannot see. A protocol that already records a token is live, not set aside.
+  const setAside: SetAsideRow[] = snapshot.protocols
+    .filter((p) => isPreToken(p) && !isRankable(p))
+    .map((p) => {
+      const reasons = setAsideReasons(p);
+      return {
+        slug: p.slug,
+        name: p.name,
+        category: p.category,
+        chains: p.chains,
+        tvl_usd: p.tvl_usd,
+        change_7d: p.change_7d,
+        listed_at: p.listed_at,
+        age_days: ageDays(snapshot.as_of, p.listed_at),
+        reasons,
+        primary_reason: reasons[0] ?? 'other',
+      };
+    })
+    .sort((a, b) => b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  const reasonTotals = new Map<string, { count: number; tvl_usd: number }>();
+  for (const row of setAside) {
+    const t = reasonTotals.get(row.primary_reason) ?? { count: 0, tvl_usd: 0 };
+    t.count += 1;
+    t.tvl_usd += row.tvl_usd;
+    reasonTotals.set(row.primary_reason, t);
+  }
+  const setAsideReasonsList: SetAsideReason[] = [...reasonTotals.entries()]
+    .map(([reason, t]) => ({ reason, label: SET_ASIDE_LABELS[reason] ?? reason, count: t.count, tvl_usd: t.tvl_usd }))
+    .sort((a, b) => b.count - a.count || b.tvl_usd - a.tvl_usd || (a.reason < b.reason ? -1 : 1));
+  // The category leaderboard: each ranked category's rows, TVL and implied value,
+  // with its top protocol and the multiple the model gave it.
+  const byCategory = new Map<string, { rows: BoardRow[] }>();
+  for (const r of board) {
+    const key = r.category ?? 'Other';
+    const g = byCategory.get(key);
+    if (g === undefined) byCategory.set(key, { rows: [r] });
+    else g.rows.push(r);
+  }
+  const categories: CategoryStat[] = [...byCategory.entries()]
+    .map(([category, g]) => {
+      const top = g.rows[0]!;
+      const mult = multipleFor(category === 'Other' ? null : category, calibrated);
+      return {
+        category,
+        ranked: g.rows.length,
+        total_tvl_usd: g.rows.reduce((n, r) => n + r.tvl_usd, 0),
+        total_implied_usd: g.rows.reduce((n, r) => n + r.implied_value_usd, 0),
+        top_slug: top.slug,
+        top_name: top.name,
+        top_implied_usd: top.implied_value_usd,
+        comparables: mult.count,
+        multiple: mult.multiple,
+        multiple_fallback: mult.fallback,
+      };
+    })
+    .sort((a, b) => b.total_implied_usd - a.total_implied_usd || (a.category < b.category ? -1 : 1));
+  // The seven-day movers: the ranked rows' sharpest gains and falls, eight each.
+  const withChange = board.filter((r) => r.change_7d !== null);
+  const toMover = (r: BoardRow): MoverRow => ({
+    rank: r.rank,
+    slug: r.slug,
+    name: r.name,
+    category: r.category,
+    tvl_usd: r.tvl_usd,
+    change_7d: r.change_7d!,
+    implied_value_usd: r.implied_value_usd,
+  });
+  const moversUp = [...withChange]
+    .sort((a, b) => b.change_7d! - a.change_7d! || (a.slug < b.slug ? -1 : 1))
+    .slice(0, 8)
+    .map(toMover);
+  const moversDown = [...withChange]
+    .sort((a, b) => a.change_7d! - b.change_7d! || (a.slug < b.slug ? -1 : 1))
+    .slice(0, 8)
+    .map(toMover);
   const radar: RadarData = {
     as_of: snapshot.as_of,
     source: snapshot.source,
@@ -603,10 +806,23 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     protocols_size: snapshot.protocols.length,
     pre_token_size: preToken,
     total_implied_usd: board.reduce((n, r) => n + r.implied_value_usd, 0),
+    ranked_tvl_usd: rankedTvl,
     comparables,
     global_multiple: calibrated.global,
-    rows: board.map(radarRow),
+    rows: board.map((r) =>
+      radarRow(r, {
+        category_rank: catRank.get(r.slug) ?? 0,
+        tvl_share_pct: rankedTvl > 0 ? round4((r.tvl_usd / rankedTvl) * 100) : 0,
+      }),
+    ),
     live,
+    set_aside: setAside,
+    set_aside_size: setAside.length,
+    set_aside_tvl_usd: setAside.reduce((n, r) => n + r.tvl_usd, 0),
+    set_aside_reasons: setAsideReasonsList,
+    categories,
+    movers_up: moversUp,
+    movers_down: moversDown,
   };
   return { board, radar };
 }

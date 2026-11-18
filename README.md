@@ -23,11 +23,42 @@ deterministic: two runs write the same bytes.
 
 - `board.json` — 198 rows: the whole 40-protocol watchlist plus 158 early finds
   below the $50M floor, ranked by implied value, each with a 7-step farm plan.
-- `data.js` — the dashboard's dataset, beside the page.
+- `data.js` — the dashboard's dataset, beside the page: the 198 ranked rows
+  (each with its implied value per $1 of TVL, its rank inside its category and
+  its share of the board's TVL), the 24 live-token protocols, the 144 set-aside
+  protocols with a reason each, the 33 categories, and the sharpest 7-day movers.
 - `dashboard/` — `index.html`, `app.css`, `app.js`; a static page, no network.
-- `screenshots/` — the board, a protocol detail view, a filtered view (1440x900).
+- `screenshots/` — the board, a protocol detail view, a filtered view, and the
+  coverage view (1440x900).
 - `dossier.json` — built by `vendor/makefun-board.ts` (the kit's library, copied
   byte for byte).
+
+## Coverage: the whole snapshot, accounted for
+
+The snapshot holds 758 protocols. 342 of them record no token; 198 are rankable
+and ranked. The other 144 are **set aside with a reason each**, never silently
+dropped — the dashboard's coverage section lists every one, with its TVL and its
+reasons, and a filter by reason:
+
+| Reason set aside | Protocols | TVL |
+| ---: | ---: | ---: |
+| Centralised exchange | 42 | $69.65B |
+| Liquid staking / restaking | 38 | $2.68B |
+| Bridge / wrapped asset | 23 | $16.23B |
+| Canonical bridge | 15 | $4.20B |
+| Versioned name | 11 | $692.9M |
+| Named after an exchange | 10 | $21.49B |
+| Wrapped / staked in the name | 5 | $144.2M |
+
+Ranking them would price a token that already trades — Bybit ($13.82B TVL),
+WBTC ($7.91B) and Binance staked ETH ($7.45B) sit at the top of the set-aside
+list, and none of them is a launch. The remaining 416 protocols already trade
+and are shown apart as the live set. 198 ranked + 144 set aside + 416 live =
+758: every protocol in the snapshot is accounted for.
+
+The board also carries a per-category leaderboard (33 categories, most implied
+value first) and the sharpest 7-day TVL movers among the ranked rows, each row
+opening its protocol's detail view.
 
 ## The model (radar-2)
 

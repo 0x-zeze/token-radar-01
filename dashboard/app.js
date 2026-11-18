@@ -9,7 +9,8 @@
   var DATA = window.RADAR;
   if (!DATA) return;
   var app = document.getElementById('board');
-  var state = { q: '', category: 'all', chain: 'all', watchlist: false, tab: 'pre-token', sort: 'implied', dir: -1, selected: null };
+  var state = { q: '', category: 'all', chain: 'all', watchlist: false, tab: 'pre-token', sort: 'implied', dir: -1, selected: null, setAside: 'all' };
+  var scrollToCoverage = false;
 
   var usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   function fmtUsd(n) {
@@ -142,6 +143,7 @@
   function readHash() {
     var hash = window.location.hash.replace(/^#/, '');
     if (!hash) return;
+    if (hash === 'coverage') { scrollToCoverage = true; return; }
     var params = new URLSearchParams(hash);
     if (params.get('q')) state.q = params.get('q');
     if (params.get('category')) state.category = params.get('category');
@@ -180,6 +182,7 @@
       var av, bv;
       if (key === 'name') { av = a.name.toLowerCase(); bv = b.name.toLowerCase(); }
       else if (key === 'tvl') { av = a.tvl_usd; bv = b.tvl_usd; }
+      else if (key === 'pertvl') { av = a.implied_per_tvl; bv = b.implied_per_tvl; }
       else if (key === 'growth') { av = a.change_7d === null ? -Infinity : a.change_7d; bv = b.change_7d === null ? -Infinity : b.change_7d; }
       else if (key === 'age') { av = a.age_days === null ? Infinity : a.age_days; bv = b.age_days === null ? Infinity : b.age_days; }
       else { av = a.implied_value_usd; bv = b.implied_value_usd; }
@@ -210,7 +213,7 @@
         el('div', { class: 'fact' }, el('span', { text: 'Watchlist covered' }), el('b', { text: DATA.watchlist_size + ' / ' + DATA.watchlist_size }), el('small', { text: 'every slug on the list' })),
         el('div', { class: 'fact' }, el('span', { text: 'Pre-token rows' }), el('b', { text: String(DATA.board_size) }), el('small', { text: DATA.early_size + ' of them early finds below the floor' })),
         el('div', { class: 'fact' }, el('span', { text: 'Total implied value' }), el('b', { text: fmtUsd(DATA.total_implied_usd) }), el('small', { text: 'sum of the whole board' })),
-        el('div', { class: 'fact' }, el('span', { text: 'Protocols scanned' }), el('b', { text: String(DATA.protocols_size) }), el('small', { text: DATA.pre_token_size + ' record no token, ' + DATA.board_size + ' ranked, ' + DATA.live_size + ' live shown apart' }))
+        el('div', { class: 'fact' }, el('span', { text: 'Protocols scanned' }), el('b', { text: String(DATA.protocols_size) }), el('small', { text: DATA.pre_token_size + ' record no token, ' + DATA.board_size + ' ranked, ' + DATA.set_aside_size + ' set aside with a reason, ' + DATA.live_size + ' live shown apart' }))
       )
     );
   }
@@ -278,11 +281,12 @@
         el('td', { class: 'num', text: String(r.rank) }),
         el('td', null, el('div', { class: 'name' },
           el('b', null, r.name, r.on_watchlist ? el('span', { class: 'badge-watch', text: 'Watchlist' }) : null),
-          el('span', { class: 'sub', text: (r.category || 'Other') + ' on ' + (r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain') })
+          el('span', { class: 'sub', text: (r.category || 'Other') + ' on ' + (r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain') + ' · #' + r.category_rank + ' in category' })
         )),
         el('td', { class: 'num', text: fmtUsd(r.tvl_usd) }),
         el('td', { class: 'num ' + growthClass, text: growth }),
         el('td', { class: 'num', text: fmtAge(r.age_days) }),
+        el('td', { class: 'num', text: fmtMult(r.implied_per_tvl) }),
         el('td', null, el('div', { class: 'implied' },
           el('div', { class: 'bar', 'aria-hidden': 'true' }, el('i', { style: 'width:' + Math.max(3, Math.round((r.implied_value_usd / max) * 100)) + '%' })),
           el('span', { class: 'num', text: fmtUsd(r.implied_value_usd) })
@@ -301,6 +305,7 @@
             sortHeader('tvl', 'TVL', 'num'),
             sortHeader('growth', '7d', 'num'),
             sortHeader('age', 'Age', 'num'),
+            sortHeader('pertvl', 'Val / TVL', 'num'),
             sortHeader('implied', 'Implied value', 'num'),
             el('th', { scope: 'col', text: 'Token' })
           )),
@@ -365,10 +370,139 @@
         el('section', { class: 'panel model' },
           el('h3', { text: 'What counts as pre-token' }),
           el('span', { class: 'sub', text: 'The board\u2019s rule, applied to all 758 protocols the same way.' }),
-          el('p', { class: 'sub', text: 'A protocol is rankable when its record carries no token — no market cap, no CoinGecko id, no symbol — and it is not a wrapped, staked or bridged product of a token that already trades: not a Bridge, Liquid Staking, Liquid Restaking, Restaked BTC or CEX category, not a versioned name, no whole word wrapped, staked or staking, and not named after an exchange. That leaves ' + DATA.board_size + ' of the ' + DATA.pre_token_size + ' protocols that record no token.' }),
+          el('p', { class: 'sub', text: 'A protocol is rankable when its record carries no token — no market cap, no CoinGecko id, no symbol — and it is not a wrapped, staked or bridged product of a token that already trades: not a Bridge, Liquid Staking, Liquid Restaking, Restaked BTC or CEX category, not a versioned name, no whole word wrapped, staked or staking, and not named after an exchange. That leaves ' + DATA.board_size + ' of the ' + DATA.pre_token_size + ' protocols that record no token. The other ' + DATA.set_aside_size + ' are set aside with a reason each, in the coverage section below: an exchange, a bridge, a liquid-staking receipt or a versioned pool is not a launch, however large its TVL.' }),
           el('p', { class: 'sub', text: 'DefiLlama\u2019s record is not proof: a protocol on the board records no token, it does not follow that it has none. The board never predicts whether or when a token is issued — it prices what a launch would be worth if the record stayed as it is, and shows what to do about it.' })
         )
       )
+    );
+  }
+
+  function setAsideRows() {
+    return (DATA.set_aside || []).filter(function (r) {
+      return state.setAside === 'all' || r.primary_reason === state.setAside;
+    });
+  }
+
+  function reasonLabel(reason) {
+    var found = null;
+    (DATA.set_aside_reasons || []).forEach(function (x) { if (x.reason === reason) found = x.label; });
+    return found || reason;
+  }
+
+  // The coverage section: the whole snapshot accounted for. The board ranks 198
+  // protocols; the other 144 that record no token are set aside with a reason each,
+  // and the 416 that already trade are live. Nothing is silently dropped.
+  function coveragePanel() {
+    var reasonRows = (DATA.set_aside_reasons || []).map(function (x) {
+      return el('tr', null,
+        el('td', { text: x.label }),
+        el('td', { class: 'num', text: String(x.count) }),
+        el('td', { class: 'num', text: fmtUsd(x.tvl_usd) }),
+        el('td', { class: 'num', text: (Math.round((x.tvl_usd / DATA.set_aside_tvl_usd) * 1000) / 10) + '%' })
+      );
+    });
+    var filter = el('select', { id: 'set-aside-reason', 'aria-label': 'Filter set-aside protocols by reason' },
+      el('option', { value: 'all', text: 'All reasons (' + DATA.set_aside_size + ')' }),
+      (DATA.set_aside_reasons || []).map(function (x) { return el('option', { value: x.reason, text: x.label + ' (' + x.count + ')', selected: x.reason === state.setAside ? 'selected' : null }); })
+    );
+    filter.addEventListener('change', function () { state.setAside = filter.value; scrollToCoverage = true; render(); });
+    var list = setAsideRows();
+    var tbody = el('tbody');
+    list.forEach(function (r) {
+      tbody.appendChild(el('tr', null,
+        el('td', null, el('div', { class: 'name' }, el('b', { text: r.name }), el('span', { class: 'sub', text: (r.category || 'Other') + ' on ' + (r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain') }))),
+        el('td', { class: 'num', text: fmtUsd(r.tvl_usd) }),
+        el('td', { class: 'num ' + (r.change_7d === null ? '' : r.change_7d >= 0 ? 'pos' : 'neg'), text: fmtPct(r.change_7d) }),
+        el('td', { text: r.reasons.map(reasonLabel).join(', ') })
+      ));
+    });
+    return el('section', { class: 'panel model', id: 'coverage' },
+      el('h2', { text: 'The whole snapshot, accounted for' }),
+      el('p', { class: 'sub', text: 'Every one of the ' + DATA.protocols_size + ' protocols in the snapshot is either ranked, set aside with a reason, or already trading — nothing is silently dropped. The set-aside ' + DATA.set_aside_size + ' hold ' + fmtUsd(DATA.set_aside_tvl_usd) + ' of TVL, most of it exchanges and wrapped assets whose token already trades; ranking them as launches would price a token that exists.' }),
+      el('div', { class: 'facts' },
+        el('div', { class: 'fact' }, el('span', { text: 'Ranked' }), el('b', { text: String(DATA.board_size) }), el('small', { text: 'pre-token and rankable' })),
+        el('div', { class: 'fact' }, el('span', { text: 'Set aside' }), el('b', { text: String(DATA.set_aside_size) }), el('small', { text: 'no token, but not a launch' })),
+        el('div', { class: 'fact' }, el('span', { text: 'Already trading' }), el('b', { text: String(DATA.protocols_size - DATA.pre_token_size) }), el('small', { text: 'a token on record' })),
+        el('div', { class: 'fact' }, el('span', { text: 'Scanned' }), el('b', { text: String(DATA.protocols_size) }), el('small', { text: 'every protocol in the snapshot' }))
+      ),
+      el('h3', { class: 'subhead', text: 'Why the set-aside protocols are not ranked' }),
+      el('div', { class: 'table-wrap' },
+        el('table', { class: 'comp-table plain' },
+          el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Reason' }), el('th', { scope: 'col', class: 'num', text: 'Protocols' }), el('th', { scope: 'col', class: 'num', text: 'TVL' }), el('th', { scope: 'col', class: 'num', text: 'Share of set-aside TVL' }))),
+          el('tbody', null, reasonRows)
+        )
+      ),
+      el('h3', { class: 'subhead', text: 'Set-aside explorer — every protocol, with its reason' }),
+      el('div', { class: 'field' }, el('label', { for: 'set-aside-reason', text: 'Reason' }), filter),
+      el('p', { class: 'sub note', text: list.length + ' protocol' + (list.length === 1 ? '' : 's') + ' shown, strongest TVL first.' }),
+      el('div', { class: 'table-wrap' },
+        el('table', { class: 'comp-table plain' },
+          el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Protocol' }), el('th', { scope: 'col', class: 'num', text: 'TVL' }), el('th', { scope: 'col', class: 'num', text: '7d' }), el('th', { scope: 'col', text: 'Why set aside' }))),
+          tbody
+        )
+      )
+    );
+  }
+
+  function categoryPanel() {
+    var tbody = el('tbody');
+    DATA.categories.forEach(function (c) {
+      tbody.appendChild(el('tr', {
+        tabindex: '0',
+        onclick: function () { openDetail(c.top_slug); },
+        onkeydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(c.top_slug); } }
+      },
+        el('td', { text: c.category }),
+        el('td', { class: 'num', text: String(c.ranked) }),
+        el('td', { class: 'num', text: fmtUsd(c.total_tvl_usd) }),
+        el('td', { class: 'num', text: fmtUsd(c.total_implied_usd) }),
+        el('td', null, el('div', { class: 'name' }, el('b', { text: c.top_name }), el('span', { class: 'sub', text: fmtUsd(c.top_implied_usd) + ' implied' }))),
+        el('td', { class: 'num', text: fmtMult(c.multiple) + (c.multiple_fallback ? ' *' : '') })
+      ));
+    });
+    return el('section', { class: 'panel model' },
+      el('h2', { text: 'Categories — where the implied value sits' }),
+      el('p', { class: 'sub', text: 'The ranked board grouped by category, most implied value first. Select a row to open its top protocol. A multiple marked * is the global median: too few live protocols in that category trade to calibrate it.' }),
+      el('div', { class: 'table-wrap' },
+        el('table', { class: 'comp-table' },
+          el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Category' }), el('th', { scope: 'col', class: 'num', text: 'Ranked' }), el('th', { scope: 'col', class: 'num', text: 'TVL' }), el('th', { scope: 'col', class: 'num', text: 'Implied value' }), el('th', { scope: 'col', text: 'Top protocol' }), el('th', { scope: 'col', class: 'num', text: 'Multiple' }))),
+          tbody
+        )
+      )
+    );
+  }
+
+  function moversTable(list, caption) {
+    var tbody = el('tbody');
+    list.slice(0, 5).forEach(function (m) {
+      tbody.appendChild(el('tr', {
+        tabindex: '0',
+        onclick: function () { openDetail(m.slug); },
+        onkeydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(m.slug); } }
+      },
+        el('td', { class: 'num', text: String(m.rank) }),
+        el('td', null, el('div', { class: 'name' }, el('b', { text: m.name }), el('span', { class: 'sub', text: (m.category || 'Other') }))),
+        el('td', { class: 'num ' + (m.change_7d >= 0 ? 'pos' : 'neg'), text: fmtPct(m.change_7d) }),
+        el('td', { class: 'num', text: fmtUsd(m.tvl_usd) }),
+        el('td', { class: 'num', text: fmtUsd(m.implied_value_usd) })
+      ));
+    });
+    return el('section', { class: 'panel model' },
+      el('h3', { text: caption }),
+      el('span', { class: 'sub', text: 'Seven-day TVL change among the ranked rows. Select a row to open it.' }),
+      el('div', { class: 'table-wrap' },
+        el('table', { class: 'comp-table' },
+          el('thead', null, el('tr', null, el('th', { scope: 'col', class: 'num', text: 'Rank' }), el('th', { scope: 'col', text: 'Protocol' }), el('th', { scope: 'col', class: 'num', text: '7d' }), el('th', { scope: 'col', class: 'num', text: 'TVL' }), el('th', { scope: 'col', class: 'num', text: 'Implied' }))),
+          tbody
+        )
+      )
+    );
+  }
+
+  function moversPanel() {
+    return el('div', { class: 'two-col' },
+      moversTable(DATA.movers_up, 'Biggest 7-day TVL gains'),
+      moversTable(DATA.movers_down, 'Biggest 7-day TVL falls')
     );
   }
 
@@ -402,6 +536,9 @@
     var steps = farmSteps(row);
     var recomputed = impliedOf(row, DATA.model);
     var flags = riskFlags(row);
+    var catStat = null;
+    DATA.categories.forEach(function (c) { if (c.category === (row.category || 'Other')) catStat = c; });
+    var catCount = catStat ? catStat.ranked : 0;
     var multipleNote = row.multiple_fallback
       ? 'Global median — too few live ' + (row.category || 'Other') + ' protocols trade to calibrate this category.'
       : row.multiple_shrunk
@@ -426,9 +563,12 @@
         el('div', null, el('span', { text: 'Maturity multiplier' }), el('b', { class: 'num', text: String(row.maturity_multiplier) })),
         el('div', null, el('span', { text: 'Chains' }), el('b', { class: 'num', text: String((row.chains || []).length) })),
         el('div', null, el('span', { text: 'Breadth multiplier' }), el('b', { class: 'num', text: String(row.breadth_multiplier) })),
+        el('div', null, el('span', { text: 'Value per $1 of TVL' }), el('b', { class: 'num', text: fmtMult(row.implied_per_tvl) })),
+        el('div', null, el('span', { text: 'Rank in category' }), el('b', { class: 'num', text: '#' + row.category_rank + ' of ' + catCount })),
         el('div', { class: 'total' }, el('span', { text: 'Implied value' }), el('b', { class: 'num', text: fmtUsd(row.implied_value_usd) }))
       ),
       el('p', { class: 'sub note', text: multipleNote }),
+      el('p', { class: 'sub note', text: 'Its TVL is ' + row.tvl_share_pct.toFixed(2) + '% of the board\u2019s ' + fmtUsd(DATA.ranked_tvl_usd) + ' of ranked TVL.' }),
       el('p', { class: 'sub note', text: 'Model ' + DATA.model_version + ': the page recomputes this row as ' + fmtUsd(recomputed) + (recomputed === row.implied_value_usd ? ', the same number board.json carries.' : ', which differs from the board: the data would be stale.') + ' This is an estimate, not a price.' }),
       flags.length ? el('div', { class: 'flags' }, flags.map(function (f) { return el('span', { class: 'flag' + (f.cool ? ' cool' : ''), text: f.text }); })) : null
     ));
@@ -455,12 +595,22 @@
     shell.appendChild(lede());
     shell.appendChild(controls());
     shell.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
-    if (state.tab === 'pre-token') shell.appendChild(modelPanel());
+    if (state.tab === 'pre-token') {
+      shell.appendChild(modelPanel());
+      shell.appendChild(coveragePanel());
+      shell.appendChild(categoryPanel());
+      shell.appendChild(moversPanel());
+    }
     shell.appendChild(footer());
     app.appendChild(shell);
     app.setAttribute('aria-busy', 'false');
     if (!dialog.isConnected) app.appendChild(dialog);
     if (state.selected) openDetail(state.selected);
+    if (scrollToCoverage) {
+      scrollToCoverage = false;
+      var target = document.getElementById('coverage');
+      if (target) target.scrollIntoView();
+    }
   }
 
   readHash();

@@ -216,6 +216,13 @@ ol.steps .cost b { display: inline; color: var(--amber); font-weight: 600; }
 .two-col .panel { padding: 0; }
 .two-col h3 { margin: 0; padding: 14px 16px 4px; font-size: 14px; }
 .two-col .sub { padding: 0 16px 12px; display: block; }
+/* coverage, categories, movers */
+.model .facts { margin: 0 0 14px; }
+.model h3.subhead { margin: 18px 0 8px; font-size: 15px; color: var(--ink); }
+.model .field { max-width: 320px; margin: 0 0 4px; }
+.plain tbody tr { cursor: default; }
+.plain tbody tr:hover { background: transparent; }
+.two-col .model { margin-top: 14px; }
 footer.foot { margin-top: 22px; color: var(--ink-faint); font-size: 13px; }
 footer.foot p { margin: 0 0 6px; }
 
